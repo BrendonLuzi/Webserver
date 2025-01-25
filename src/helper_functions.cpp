@@ -36,6 +36,14 @@ bool isFileGood(const std::string& filename, std::string method) {
 	return true;
 }
 
+bool isDirectory(const std::string& filename) {
+	struct stat buffer;
+	if (stat(filename.c_str(), &buffer) == 0) {
+		return S_ISDIR(buffer.st_mode);
+	}
+	return false;
+}
+
 std::string readFile(const std::string& filename) {
     std::ifstream _file(filename.c_str());
     std::string content;

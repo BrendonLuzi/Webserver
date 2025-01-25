@@ -27,13 +27,13 @@ Response handleGetRequest(const HttpRequest& request, const Route& route) {
 	}
 
 	// if the uri is a directory and autoindex is off, append the index file
-	if (uri.back() == '/') {
+	if (uri.back() == '/' && isDirectory(filePath)) {
 		if (route.getDirective("autoindex") == "off") {
 			filePath += route.getDirective("index");
 		}
 		else {
-			// generate the autoindex page
-			std::cout << "Autoindex is on" << std::endl;
+			// generate the autoindex page by executin the index.py script
+			return executeCgi("../public/cgi-bin/index.py", "/usr/bin/python3", filePath);
 		}
 	}
 
@@ -306,16 +306,44 @@ Response executeCgi(const std::string& filePath, const std::string& interpreter,
 		close(pipefd[0]);
 
 		// Parse the response
-		HttpRequest responseRequest(body);
+		std::istringstream response_stream(body);
+		std::string line;
+		// Parse the headers
+		while (std::getline(response_stream, line) && !line.empty() && line != "\r") {
+			size_t colon_pos = line.find(':');
+			if (colon_pos == std::string::npos) {
+				throw std::runtime_error("Malformed header line: " + line);
+			}
 
-		if (responseRequest.get_headers().count("status") > 0) {
-			std::string status = responseRequest.get_headers().at("Status");
+			// Extract name and value
+			std::string name = line.substr(0, colon_pos);
+			std::string value = line.substr(colon_pos + 1);
+
+			// Trim whitespace
+			name.erase(0, name.find_first_not_of(" \t"));
+			name.erase(name.find_last_not_of(" \t") + 1);
+			value.erase(0, value.find_first_not_of(" \t"));
+			value.erase(value.find_last_not_of(" \t") + 1);
+
+			// Normalize header name to lowercase (maybe don't, it's confusing later on)
+			std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+			headers[name] = value;
+		}
+
+		// Read the rest of the body
+		while (std::getline(response_stream, line)) {
+			response += line + "\n";
+		}
+		
+		// Check if the response contains a status code
+		if (headers.find("status") != headers.end()) {
+			std::string status = headers["status"];
 			int status_code = std::stoi(status.substr(0, status.find(" ")));
 			
 			// Remove the status from the headers and body
-			responseRequest.get_headers().erase("Status");
+			headers.erase("status");
 
-			return Response(status_code, responseRequest.get_headers(), responseRequest.get_body());
+			return Response(status_code, headers, response);
 		}
 
 		// Return error

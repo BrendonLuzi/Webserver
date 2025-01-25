@@ -26,6 +26,7 @@
 #define RESET "\033[0m"
 
 bool isFileGood(const std::string& filename, std::string method);
+bool isDirectory(const std::string& filename);
 std::string get_filename(const std::string& part);
 std::string readFile(const std::string& filename);
 std::string getContentType(const std::string& extension);
