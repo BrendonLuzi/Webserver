@@ -3,7 +3,10 @@
 import os
 
 # Read arguments to find the directory
-directory = os.environ.get("SCRIPT_FILENAME")
+if os.environ.get("QUERY_STRING") != "":
+	directory = os.environ.get("QUERY_STRING")
+else:
+	directory = os.environ.get("SCRIPT_FILENAME")
 
 # If the provided directory is a file, get the directory name
 if os.path.isfile(directory):
@@ -21,6 +24,7 @@ print("<ul>")
 
 # List all the files in the directory
 for file in os.listdir(directory):
+	file += "/" if os.path.isdir(directory + "/" + file) else ""
 	print(f'<li><a href="{file}">{file}</a></li>')
 
 print("</ul>")

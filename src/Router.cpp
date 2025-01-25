@@ -100,6 +100,14 @@ Route Router::findRoute(const HttpRequest &request) const {
 Response Router::route(const HttpRequest& request) const {
 	Route route = findRoute(request);
 
+	// Check if there is a redirect directive
+	std::string redirect = route.getDirective("redirect");
+	if (redirect != "") {
+		std::map<std::string, std::string> headers;
+		headers["Location"] = redirect + request.get_uri().substr(route.getDirective("uri").length());
+		return Response(301, headers, "Redirecting");
+	}
+
 	// Check if the method is allowed
 	std::string allow_methods = route.getDirective("allow_methods");
 	if (allow_methods.find(request.get_method()) == std::string::npos) {
