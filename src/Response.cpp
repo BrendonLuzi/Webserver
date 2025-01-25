@@ -9,13 +9,20 @@ Response handleGetRequest(const HttpRequest& request, const Route& route) {
 
 	// if the location allows CGI, handle CGI
 	if (route.getDirective("cgi") != "") {
-		// if the extension is in cgi, handle CGI
-		std::string extension = " " + uri.substr(uri.find_last_of(".") + 1) + " ";
+		// split the uri to get the query string
+		std::string query = "";
+		std::string extension = "";
+		if (uri.find("?") != std::string::npos) {
+			query = uri.substr(uri.find("?") + 1);
+			extension = uri.substr(0, uri.find("?"));
+			extension = extension.substr(extension.find_last_of(".") + 1) + " ";
+		}
+		else
+			extension = uri.substr(uri.find_last_of(".") + 1) + " ";
+		
 		if (route.getDirective("cgi").find(extension) != std::string::npos) {
 			// handle CGI
-			std::cout << "CGI is on" << std::endl;
-			// return handleCgiRequest(request, route);
-			return Response(200, headers, "CGI is on");
+			return handleCgiRequest(request, route, query);
 		}
 	}
 
@@ -159,10 +166,161 @@ Response handleDeleteRequest(const HttpRequest& request, const Route& route) {
 	return Response(404, headers, "Not Found");
 }
 
-// Response handleCgiRequest(const HttpRequest& request, const Route& route) {
-// 	std::map<std::string, std::string> headers;
-// 	std::string uri = request.get_uri();
-// 	std::string filePath = route.getDirective("root") + uri;
+Response handleCgiRequest(const HttpRequest& request, const Route& route) {
+	std::map<std::string, std::string> headers;
+	std::string uri = request.get_uri();
+	std::string filePath = route.getDirective("root") + uri;
+	std::string interpreter = "";
 
-// 	std::string filename
-// }
+	// 
+
+	// Find extension of the file
+	std::string extension = uri.substr(uri.find_last_of(".") + 1);
+
+	std::vector<std::string> cgiDirectives = split(route.getDirective("cgi"), " ");
+	// Find the path to the interpreter after the extension
+	for (std::vector<std::string>::iterator it = cgiDirectives.begin(); it != cgiDirectives.end(); ++it) {
+		if (it->find(extension) != std::string::npos && it + 1 != cgiDirectives.end()) {
+			interpreter = *(it + 1);
+			break;
+		}
+	}
+
+	// print the info
+	std::cout << "Interpreter: " << interpreter << std::endl;
+	std::cout << "File Path: " << filePath << std::endl;
+
+	// If the interpreter is not found, or it doesn't exist, return a 500 Internal Server Error response
+	if (interpreter == "" || !isFileGood(interpreter, "CGI")) {
+		headers["Content-Type"] = "text/plain";
+		headers["Content-Length"] = "9";
+		return Response(500, headers, "Server Error");
+	}
+
+	// If the file does not exist, return a 404 Not Found response
+	if (!isFileGood(filePath, "CGI")) {
+		headers["Content-Type"] = "text/plain";
+		headers["Content-Length"] = "9";
+		return Response(404, headers, "Not Found");
+	}
+
+	return executeCgi(filePath, interpreter, "");
+}
+
+Response handleCgiRequest(const HttpRequest& request, const Route& route, const std::string& query) {
+	std::map<std::string, std::string> headers;
+	std::string uri = request.get_uri();
+	std::string filePath = route.getDirective("root") + uri;
+	std::string interpreter = "";
+
+	if (query != "") {
+		uri = uri.substr(0, uri.find("?"));
+	}
+
+	// Find extension of the file
+	std::string extension = uri.substr(uri.find_last_of(".") + 1);
+
+	std::vector<std::string> cgiDirectives = split(route.getDirective("cgi"), " ");
+	// Find the path to the interpreter after the extension
+	for (std::vector<std::string>::iterator it = cgiDirectives.begin(); it != cgiDirectives.end(); ++it) {
+		if (it->find(extension) != std::string::npos && it + 1 != cgiDirectives.end()) {
+			interpreter = *(it + 1);
+			break;
+		}
+	}
+
+	// print the info
+	std::cout << "Interpreter: " << interpreter << std::endl;
+	std::cout << "File Path: " << filePath << std::endl;
+
+	// If the interpreter is not found, or it doesn't exist, return a 500 Internal Server Error response
+	if (interpreter == "" || !isFileGood(interpreter, "CGI")) {
+		headers["Content-Type"] = "text/plain";
+		headers["Content-Length"] = "9";
+		return Response(500, headers, "Server Error");
+	}
+
+	// If the file does not exist, return a 404 Not Found response
+	if (!isFileGood(filePath, "CGI")) {
+		headers["Content-Type"] = "text/plain";
+		headers["Content-Length"] = "9";
+		return Response(404, headers, "Not Found");
+	}
+
+	return executeCgi(filePath, interpreter, query);
+}
+
+Response executeCgi(const std::string& filePath, const std::string& interpreter, const std::string& query_string) {
+	std::map<std::string, std::string> headers;
+	std::string body = "";
+	std::string response = "";
+
+	// Create a pipe to read the output of the CGI script
+	int pipefd[2];
+	if (pipe(pipefd) == -1) {
+		headers["Content-Type"] = "text/plain";
+		headers["Content-Length"] = "9";
+		return Response(500, headers, "Server Error");
+	}
+
+	// Fork the process
+	pid_t pid = fork();
+	if (pid == -1) {
+		headers["Content-Type"] = "text/plain";
+		headers["Content-Length"] = "9";
+		return Response(500, headers, "Server Error");
+	}
+
+	if (pid == 0) {
+		// Child process
+		// Redirect stdout to the write end of the pipe
+		close(pipefd[0]);
+		dup2(pipefd[1], STDOUT_FILENO);
+		close(pipefd[1]);
+
+		// Set environment variables
+		setenv("REQUEST_METHOD", "GET", 1);
+		setenv("SCRIPT_FILENAME", filePath.c_str(), 1);
+		setenv("QUERY_STRING", query_string.c_str(), 1);
+
+		// Execute the CGI script
+		execl(interpreter.c_str(), interpreter.c_str(), filePath.c_str(), query_string.c_str(), NULL);
+		exit(1);
+	} else {
+		// Parent process
+		// Close the write end of the pipe
+		close(pipefd[1]);
+
+		// Read the output of the CGI script
+		char buffer[4096];
+		ssize_t bytesRead;
+		while ((bytesRead = read(pipefd[0], buffer, sizeof(buffer))) > 0) {
+			body.append(buffer, bytesRead);
+		}
+
+		// Wait for the child process to finish
+		int status;
+		waitpid(pid, &status, 0);
+
+		// Close the read end of the pipe
+		close(pipefd[0]);
+
+		// Parse the response
+		HttpRequest responseRequest(body);
+
+		if (responseRequest.get_headers().count("status") > 0) {
+			std::string status = responseRequest.get_headers().at("Status");
+			int status_code = std::stoi(status.substr(0, status.find(" ")));
+			
+			// Remove the status from the headers and body
+			responseRequest.get_headers().erase("Status");
+
+			return Response(status_code, responseRequest.get_headers(), responseRequest.get_body());
+		}
+
+		// Return error
+		headers["Content-Type"] = "text/plain";
+		headers["Content-Length"] = "9";
+		return Response(500, headers, "Server Error");
+	}
+}

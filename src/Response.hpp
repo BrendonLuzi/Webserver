@@ -66,6 +66,9 @@ public:
 Response handleGetRequest(const HttpRequest& request, const Route& route);
 Response handlePostRequest(const HttpRequest& request, const Route& route);
 Response handleDeleteRequest(const HttpRequest& request, const Route& route);
-// Response handleCgiRequest(const HttpRequest& request, const Route& route);
+Response handleCgiRequest(const HttpRequest& request, const Route& route);
+Response handleCgiRequest(const HttpRequest& request, const Route& route, const std::string& query);
+
+Response executeCgi(const std::string& interpreter, const std::string& filePath, const std::string& query_string);
 
 #endif // RESPONSE_HPP
