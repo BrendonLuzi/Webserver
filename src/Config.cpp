@@ -1,18 +1,9 @@
 #include "Config.hpp"
 #include "Route.hpp"
 
+Config::Config() {};
 
-// Config::Config(std::string &path) : path(path){
-//   fd = open(path.c_str(), O_RDONLY);
-//   if (fd < 0)
-//     throw "could not open configuration file";
-// };
-Config::Config() {  
-};
-
-Config::~Config() {
-	// close(fd);
-};
+Config::~Config() {};
 
 // Helper function to trim whitespace
 std::string Config::trim(const std::string &str) {
@@ -27,12 +18,6 @@ std::string Config::trim(const std::string &str) {
     }
 }
 
-// A structure to hold configuration data
-// struct ConfigNode {
-//     std::map<std::string, std::string> directives; // Key-value pairs (e.g., "workers 8;")
-//     std::map<std::string, std::vector<ConfigNode> > blocks; // Nested blocks (e.g., "server")
-// };
-
 // Function to parse the configuration file iteratively
 Config::ConfigNode Config::parseConfigFile(const std::string &filename) {
     Config::ConfigNode root;
@@ -45,12 +30,6 @@ Config::ConfigNode Config::parseConfigFile(const std::string &filename) {
 
     std::string line;
     std::stack<Config::ConfigNode*> nodeStack; // Stack to track the current block
-        // Specific attributes for storing parsed values
-    std::string workers;
-    std::string host;
-    std::string cgi;
-    std::string rootDir;
-    std::string errorPage;
     nodeStack.push(&root);
 
     while (std::getline(file, line)) {
@@ -93,54 +72,25 @@ Config::ConfigNode Config::parseConfigFile(const std::string &filename) {
             if (space != std::string::npos) {
                 std::string key = trim(directive.substr(0, space));
                 std::string value = trim(directive.substr(space + 1));
-                if (key == "workers") {
-                        workers = value;
-                }
-                else if (key == "host") {
-                    host = value;
-                } 
-                else if (key == "cgi") {
-                    cgi = value;
-                } 
-                else if (key == "root") {
-                    rootDir = value;
-                } 
-                else if (key == "error_page") {
-                    errorPage = value;
-                }
-                nodeStack.top()->directives[key] = value;
 
-            } else {
+				// If the directive has already a value and the key is error page, append the new value depending on the key
+				if (nodeStack.top()->directives.find(key) != nodeStack.top()->directives.end() ) {
+					// Depending on the key, append the new value or overwrite the old value
+					if (key == "error_page" || key == "allow" || key == "types" || key == "cgi" || key == "listen") {
+						nodeStack.top()->directives[key] += " " + value;
+					}
+					else {
+						nodeStack.top()->directives[key] = value;
+					}
+				}
+				else {
+                	nodeStack.top()->directives[key] = value;
+				}
+            } 
+			else {
                 nodeStack.top()->directives[directive] = ""; // For directives without values
             }
         }
-    }
-
-    // Store specific values in the Config object, if its not exist put default values
-    if ( workers == "" ){
-        this->workers = "Whatever it supposed to be";
-    } else {
-        this->workers = workers;
-    }
-    if ( host == "" ){
-          this->host = "localhost";
-    } else {
-        this->host = host;      
-    }
-    if ( cgi == ""){
-        this->cgi = "Whatever it supposed to be";
-    } else {
-        this->cgi = cgi;
-    }
-    if ( rootDir == "" ) {
-        this->rootDir = "Whatever it supposed to be";
-    } else {
-        this->rootDir = rootDir;
-    }
-    if ( errorPage == "" ) {
-        this->errorPage = "Whatever it supposed to be" ;
-    } else {
-        this->errorPage = errorPage;
     }
     file.close();
     return root;

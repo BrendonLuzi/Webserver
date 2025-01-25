@@ -66,5 +66,6 @@ public:
 Response handleGetRequest(const HttpRequest& request, const Route& route);
 Response handlePostRequest(const HttpRequest& request, const Route& route);
 Response handleDeleteRequest(const HttpRequest& request, const Route& route);
+// Response handleCgiRequest(const HttpRequest& request, const Route& route);
 
 #endif // RESPONSE_HPP

@@ -1,49 +1,56 @@
 #include "Server.hpp"
 
 Server::Server(Config::ConfigNode &server) {
-	// Create socket
-	_server_fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (_server_fd < 0) {
-		std::cerr << "Error: Socket creation failed\n";
-		exit(1);
-	}
-	// Set socket to non-blocking
-	// fcntl(_server_fd, F_SETFL, O_NONBLOCK);
+	// For each port in the configuration, create a socket and set it to listen on that port
+	std::vector<std::string> listen_directive = split(server.directives["listen"], " ");
 
-	// Bind socket to port #
-	struct sockaddr_in address;
-	address.sin_family = AF_INET;
-	address.sin_addr.s_addr = INADDR_ANY;
-	// set port as the listen directive. if the value contains a colon, use the port after the colon
-	int port;
-	if (server.directives["listen"].find(":") != std::string::npos) {
-		port = std::stoi(server.directives["listen"].substr(server.directives["listen"].find(":") + 1));
-	} else {
-		port = std::stoi(server.directives["listen"]);
-	}
-	address.sin_port = htons(port);
-	if (bind(_server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-		std::cerr << "Error: Bind failed\n";
-		close(_server_fd);
-		exit(1);
-	}
+	for (std::vector<std::string>::iterator port = listen_directive.begin(); port != listen_directive.end(); ++port) {
+		// Create socket
+		int server_fd;
+		server_fd = socket(AF_INET, SOCK_STREAM, 0);
+		if (server_fd < 0) {
+			std::cerr << "Error: Socket creation failed\n";
+			exit(1);
+		}
 
-	// Listen for incoming connections
-	if (listen(_server_fd, 10) == -1) {
-		std::cerr << "Error: Listen failed\n";
-		close(_server_fd);
-		exit(1);
+		// Set socket to non-blocking
+		// fcntl(server_fd, F_SETFL, O_NONBLOCK);
+
+		// Bind socket to port #
+		struct sockaddr_in address;
+		address.sin_family = AF_INET;
+		address.sin_addr.s_addr = INADDR_ANY;
+
+		// If the value contains a colon, use the part after the colon
+		int port_num;
+		if (port->find(":") != std::string::npos) {
+			port_num = std::stoi(port->substr(port->find_last_of(":") + 1));
+		} else {
+			port_num = std::stoi(*port);
+		}
+		address.sin_port = htons(port_num);
+
+		// Bind the socket to the address
+		if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+			std::cerr << "Error: Bind failed\n";
+			close(server_fd);
+			exit(1);
+		}
+
+		// Listen for incoming connections
+		if (listen(server_fd, 10) == -1) {
+			std::cerr << "Error: Listen failed\n";
+			close(server_fd);
+			exit(1);
+		}
+
+		// Add server socket to sockets
+		pollfd server_socket = { server_fd, POLLIN, 0 };
+		_sockets.push_back(server_socket);
+		_server_fd.push_back(server_fd);
+
+		std::cout << MAGENTA << "Server with fd " << server_fd << " listening on port "<< port_num <<" ..." << RESET << std::endl;
 	}
-
-	// Add server socket to sockets
-	pollfd server_socket = { _server_fd, POLLIN, 0 };
-	_sockets.push_back(server_socket);
-
-	// fd_set read_fds; // Declare an fd_set structure
-	// FD_ZERO(&read_fds); // Clear the set
-	// FD_SET(_server_fd, &read_fds); // Add _server_fd to the set
-	_port = port;
-	std::cout << MAGENTA << "Server listening on port "<< port <<"..." << RESET << std::endl;
 }
 
 Server::~Server() {
@@ -57,14 +64,14 @@ Server::~Server() {
 	}
 }
 
-void Server::accept_connection() {
+void Server::accept_connection(int server_fd) {
 	// Open new socket and accept connection
 	int new_socket;
 	struct sockaddr_in address;
 	int addrlen = sizeof(address);
-	if ((new_socket = accept(_server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+	if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
 		std::cerr << "Error: Accept failed\n";
-		close(_server_fd);
+		close(server_fd);
 		exit(1);
 	}
 
@@ -79,20 +86,19 @@ void Server::accept_connection() {
 }
 
 void Server::read_request(int i) {
-	std::cout << RED << "YOU KNOW IT" << RESET << std::endl;
 	// Read request header
 	char buffer[BUFFER_SIZE] = {0};
 	ssize_t bytes_received;
 	std::string request_data = "";
 	std::string header_end = "\r\n\r\n";
+
+	// Read until the end of the header is found
 	size_t header_end_pos = request_data.find(header_end);
 	while (header_end_pos == std::string::npos) {
 		bytes_received = recv(_sockets[i].fd, buffer, BUFFER_SIZE, 0);
 		request_data.append(buffer, bytes_received);
-		std::cout << "Received " << bytes_received << " bytes" << std::endl;
 		header_end_pos = request_data.find(header_end);
 	}
-	std::cout << RED << "YOU KNOW IT 2" << RESET << std::endl;
 
 	// Find content length and read request body
 	std::string headers = request_data.substr(0, header_end_pos);
@@ -112,20 +118,12 @@ void Server::read_request(int i) {
 			if (bytes_received == -1) {
 				std::cerr << "Error: Receive failed\n";
 				close(_sockets[i].fd);
-				close(_server_fd);
+				// close(_server_fd);
 				exit (EXIT_FAILURE);
 			}
 			request_data.append(buffer, bytes_received);
 			std::cout << "Request data size: " << request_data.size() << std::endl;
 		}
-	}
-	std::cout << RED << "YOU KNOW IT 3" << RESET << std::endl;
-
-	if (bytes_received == -1) {
-		std::cerr << "Error: Receive failed\n";
-		close(_sockets[i].fd);
-		close(_server_fd);
-		exit (EXIT_FAILURE);
 	}
 
 	//print request
@@ -136,28 +134,26 @@ void Server::read_request(int i) {
 	HttpRequest request(request_data);
 	_requests[_sockets[i].fd] = request;
 
-	// Prepare response
-	Response response = router->route(request);
-	
-	std::cout<<BLUE<<"Response: "<<response.get_status_code()<<RESET<<std::endl;
-	
-	// Save response to _responses and set socket to POLLOUT
-	_responses[_sockets[i].fd] = response;
+	// Set the socket to wait for the response
 	_sockets[i].events = POLLOUT;
 }
 
 void Server::write_response(int i) {
+	// Prepare response
+	Response response = router->route(_requests[_sockets[i].fd]);
+	
+	std::cout<<BLUE<<"Response: "<<response.get_status_code()<<RESET<<std::endl;
+	
 	// Send response
-	std::string response_str = _responses[_sockets[i].fd].to_string();
+	std::string response_str = response.to_string();
 	send(_sockets[i].fd, response_str.c_str(), response_str.size(), 0);
 	std::cout << response_str << std::endl;
 
+	// Erase the request
+	_requests.erase(_sockets[i].fd);
+
 	// Check if connection is keep-alive
 	bool keep_alive = _requests[_sockets[i].fd].get_connection() == "keep-alive";
-
-	// Erase request and response
-	_requests.erase(_sockets[i].fd);
-	_responses.erase(_sockets[i].fd);
 
 	// If connection is not keep-alive, close the socket
 	if (!keep_alive) {
@@ -172,10 +168,10 @@ void Server::write_response(int i) {
 }
 
 void Server::check_sockets()  {
-	// Check all sockets for events
+	// Check all sockets in the server for events in non-blocking mode
 	poll(_sockets.data(), _sockets.size(), 0);
 
-	// Loop through all sockets
+	// Loop through all sockets in the server
 	for (int i = 0; i < _sockets.size(); i++) {
 		// If POLLHUP or POLLERR events occur, close the socket			
 		if (_sockets[i].revents & POLLHUP || _sockets[i].revents & POLLERR) {
@@ -184,9 +180,9 @@ void Server::check_sockets()  {
 		}
 		// If POLLIN event occurs, read the request
 		else if (_sockets[i].revents & POLLIN) {
-			// If the server socket has an event, accept the connection
-			if (_sockets[i].fd == _server_fd)
-				accept_connection();
+			// If a server socket has an event, accept the connection
+			if (std::find(_server_fd.begin(), _server_fd.end(), _sockets[i].fd) != _server_fd.end())
+				accept_connection(_sockets[i].fd);
 			// If a client socket has an event, read the request
 			else
 				read_request(i);

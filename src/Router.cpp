@@ -1,39 +1,8 @@
-// #include "Router.hpp"
-
-// void Router::add_route(const std::string& method, const std::string& path, Handler handler) {
-// 	this->routes[method][path] = handler;
-// }
-
-// Response Router::route(const HttpRequest& request) {
-// 	std::map<std::string, std::map<std::string, Handler> >::iterator method_it = this->routes.find(request.get_method());
-// 	if (method_it != this->routes.end()) {
-// 		std::map<std::string, Handler>::iterator path_it = method_it->second.find(request.get_uri());
-// 		// Call the handler for the exact path
-// 		if (path_it != method_it->second.end()) {
-// 			return path_it->second(request);
-// 		} else if (request.get_uri().substr(0, 8) == "/assets/") {
-// 		// Call the handler for "/assets/"
-// 			path_it = method_it->second.find("/assets/");
-// 			if (path_it != method_it->second.end()) {
-// 				return path_it->second(request);
-// 			}
-// 		}
-// 	}
-// 	return Response(404, std::map<std::string, std::string>(), "Not Found");
-// }
-
-
 #include "Router.hpp"
 
 Router::Router() {}
 
 Router::Router(Config::ConfigNode &config, Config::ConfigNode &server) {
-	// Get location block and print contents
-	//Config::ConfigNode location_block = server.blocks["location"];
-	//std::cout << "Location block: " << std::endl;
-	//Config *test = new Config();
-	//test->printConfig(location_block, 0);
-
 	// Fill empty directives in server with config values or default values
 	std::array<std::string, 11> possible_directives = {"root", "index", "allow_methods", "types", "error_page", "client_max_body_size", "redirect", "autoindex", "cgi", "access_log", "error_log"};
 	std::map<std::string, std::string> default_values = {
@@ -101,15 +70,6 @@ void Router::getLocations(Config::ConfigNode &node) {
 	}
 }
 
-
-// void Router::add_route(const std::string& method, const std::string& path, Handler handler, bool is_prefix) {
-//     if (is_prefix) {
-//         prefix_routes[method][path] = handler;
-//     } else {
-//         exact_routes[method][path] = handler;
-//     }
-// }
-
 Route Router::findRoute(const HttpRequest &request) const {
 	const std::string& method = request.get_method();
     const std::string& uri = request.get_uri();
@@ -160,7 +120,7 @@ Response Router::route(const HttpRequest& request) const {
 		// handle DELETE request
 		return handleDeleteRequest(request, route);
 	}
-	else {
+	else { // Should not happen, maybe remove
 		// Method not implemented, return 501
 		return Response(501, std::map<std::string, std::string>(), "Not Implemented");
 	}

@@ -6,6 +6,7 @@
 #include <map>
 #include "Config.hpp"
 #include "helper_functions.hpp"
+#include <array>
 
 class Route {
 public:

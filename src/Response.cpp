@@ -2,25 +2,6 @@
 #include <iostream>
 #include "helper_functions.hpp"
 
-// Response handleGetRequestToRoot(const HttpRequest& request) {
-//     std::map<std::string, std::string> headers;
-//     if (request.get_uri() == "/") {
-//         std::string body = readFile("../public/solution.html");
-//         if (body.empty()) {
-//             headers["Cache-Control"] = "no-store";
-//             headers["Content-Type"] = "text/plain";
-//             body = "Internal Server Error";
-//             headers["Content-Length"] = std::to_string(body.size());
-//             return Response(500, headers, body);  // Return 500 if file can't be read
-//         }
-//         headers["Cache-Control"] = "no-store";
-//         headers["Content-Type"] = "text/html";
-//         headers["Content-Length"] = std::to_string(body.size());
-//         return Response(200, headers, body);
-//     }
-//     return Response(404, headers, "Not Found");
-// }
-
 Response handleGetRequest(const HttpRequest& request, const Route& route) {
 	std::map<std::string, std::string> headers;
 	std::string uri = request.get_uri();
@@ -178,46 +159,10 @@ Response handleDeleteRequest(const HttpRequest& request, const Route& route) {
 	return Response(404, headers, "Not Found");
 }
 
-// Response handlePostRequest(const HttpRequest& request) {
-//     // Get the raw body and Content-Type
-//     std::string body = request.get_body();
-//     std::string content_type = request.get_headers().at("content-type");
+// Response handleCgiRequest(const HttpRequest& request, const Route& route) {
+// 	std::map<std::string, std::string> headers;
+// 	std::string uri = request.get_uri();
+// 	std::string filePath = route.getDirective("root") + uri;
 
-//     // Extract the boundary from the Content-Type header
-//     std::string boundary = get_boundary(content_type);
-
-//     // Split the body into parts using the boundary
-//     std::vector<std::string> parts = split_by_boundary(body, boundary);
-
-//     bool file_uploaded = false;
-
-//     // Process each part (either form field or file)
-// 	for (std::vector<std::string>::iterator it = parts.begin(); it != parts.end(); ++it) {
-//     	const std::string& part = *it;
-//         if (part.find("Content-Disposition: form-data;") != std::string::npos) {
-//             // Check if it's a file part by looking for the "filename" field
-//             if (part.find("filename=\"") != std::string::npos) {
-//                 save_uploaded_file(part);
-//                 file_uploaded = true;
-//             } else {
-//                 // Process form field (not implemented here)
-//                 std::cout << "Form field: " << part << std::endl;
-//             }
-//         }
-//     }
-
-//     // Send a response based on whether the file was uploaded successfully
-//     if (file_uploaded) {
-//         // Return a 200 OK response with a success message
-//         std::map<std::string, std::string> headers;
-//         headers["Content-Type"] = "text/plain";
-//         std::string body = "File uploaded successfully.";
-//         return Response(200, headers, body);
-//     } else {
-//         // Return a 400 Bad Request response if no file was uploaded
-//         std::map<std::string, std::string> headers;
-//         headers["Content-Type"] = "text/plain";
-//         std::string body = "No file uploaded or invalid request.";
-//         return Response(400, headers, body);
-//     }
+// 	std::string filename
 // }
