@@ -31,6 +31,8 @@ class Server {
 	std::vector<int> _server_fd;
 	std::vector<pollfd> _sockets;
 	std::map<int, HttpRequest> _requests;
+	std::map<int, std::string> _buffers;
+	std::map<int, bool> _continue; 
 
 public:
 	Router *router;

@@ -14,7 +14,7 @@ Server::Server(Config::ConfigNode &server) {
 		}
 
 		// Set socket to non-blocking
-		// fcntl(server_fd, F_SETFL, O_NONBLOCK);
+		fcntl(server_fd, F_SETFL, O_NONBLOCK);
 
 		// Bind socket to port #
 		struct sockaddr_in address;
@@ -59,7 +59,7 @@ Server::~Server() {
 		if (_sockets[i].fd != -1)
 		{
 			close(_sockets[i].fd);
-			std::cout << YELLOW << "Socket " << _sockets[i].fd << " closed" << RESET << std::endl;
+			std::cout << YELLOW << "Conneciton closed for socket " << _sockets[i].fd << RESET << std::endl;
 		}
 	}
 }
@@ -76,7 +76,7 @@ void Server::accept_connection(int server_fd) {
 	}
 
 	// Set new socket to non-blocking
-	// fcntl(new_socket, F_SETFL, O_NONBLOCK);
+	fcntl(new_socket, F_SETFL, O_NONBLOCK);
 	
 	// Add new socket to _sockets
 	pollfd client_socket = { new_socket, POLLIN, 0};
@@ -92,41 +92,61 @@ void Server::read_request(int i) {
 	std::string request_data = "";
 	std::string header_end = "\r\n\r\n";
 
-	// Read until the end of the header is found
-	size_t header_end_pos = request_data.find(header_end);
-	while (header_end_pos == std::string::npos) {
-		bytes_received = recv(_sockets[i].fd, buffer, BUFFER_SIZE, 0);
-		request_data.append(buffer, bytes_received);
-		header_end_pos = request_data.find(header_end);
+	// Read to a buffer
+	bytes_received = recv(_sockets[i].fd, buffer, BUFFER_SIZE, 0);
+	if (bytes_received == -1) {
+		std::cerr << "Error: Receive failed\n";
+		close(_sockets[i].fd);
+		// close(_server_fd);
+		exit (EXIT_FAILURE);
 	}
 
-	// Find content length and read request body
-	std::string headers = request_data.substr(0, header_end_pos);
-	size_t content_length_pos = headers.find("Content-Length: ");
+	_buffers[_sockets[i].fd] += std::string(buffer, bytes_received);
 
-	if (content_length_pos != std::string::npos) {
-		size_t content_length_end_pos = headers.find("\r\n", content_length_pos);
-		std::string content_length_str = headers.substr(content_length_pos + 16, content_length_end_pos - (content_length_pos + 16));
+	// Check if the header is complete
+	size_t header_end_pos = _buffers[_sockets[i].fd].find(header_end);
+	// If the header is not complete yet return
+	if (header_end_pos == std::string::npos) {
+		return;
+	}
+
+	// If the header is complete, save it	
+	std::string header = _buffers[_sockets[i].fd].substr(0, header_end_pos + 4);
+
+	// Check if the header contains a Content-Length field
+	size_t content_length_pos = header.find("Content-Length: ");
+
+	// If the header doesn't contain a Content-Length field, the request is complete
+	if (content_length_pos == std::string::npos) {
+		// Erase the header from the buffer
+		_buffers[_sockets[i].fd].erase(0, header_end_pos + 4);
+		request_data = header;
+	}
+	else {
+		// Find the content length
+		size_t content_length_end_pos = header.find("\r\n", content_length_pos);
+		std::string content_length_str = header.substr(content_length_pos + 16, content_length_end_pos - (content_length_pos + 16));
 		int content_length = std::stoi(content_length_str);
 
-		std::cout << YELLOW << headers << std::endl;
-		std::cout << GREEN << request_data << RESET << std::endl;
-
-
-		while (request_data.size() < header_end_pos + 4 + content_length) {
-			bytes_received = recv(_sockets[i].fd, buffer, BUFFER_SIZE, 0);
-			if (bytes_received == -1) {
-				std::cerr << "Error: Receive failed\n";
-				close(_sockets[i].fd);
-				// close(_server_fd);
-				exit (EXIT_FAILURE);
+		// If the request body is complete, save it
+		if (_buffers[_sockets[i].fd].size() >= header_end_pos + 4 + content_length) {
+			request_data = header + _buffers[_sockets[i].fd].substr(header_end_pos + 4, content_length);
+			_buffers[_sockets[i].fd].erase(0, header_end_pos + 4 + content_length);
+		}
+		// If the request body is not complete yet, return
+		else {
+			// If the headercontains a Expect: 100-continue field, create a 100 Continue response and set the socket to wait for the response
+			size_t expect_pos = header.find("Expect: 100-continue");
+			if (expect_pos != std::string::npos) {
+				_continue[_sockets[i].fd] = true;
+				// Set the socket to wait for the response
+				_sockets[i].events = POLLOUT;
 			}
-			request_data.append(buffer, bytes_received);
-			std::cout << "Request data size: " << request_data.size() << std::endl;
+			return;
 		}
 	}
 
-	//print request
+	// Print request
 	std::cout<<BLUE<<"New Request from "<<_sockets[i].fd<<RESET<<std::endl;
 	std::cout<<CYAN<<request_data<<RESET<<std::endl;	
 
@@ -139,6 +159,15 @@ void Server::read_request(int i) {
 }
 
 void Server::write_response(int i) {
+	// If the socket is waiting for a 100 Continue response, send the response and set the socket to wait for the request
+	if (_continue[_sockets[i].fd]) {
+		std::string response = "HTTP/1.1 100 Continue\r\n\r\n";
+		send(_sockets[i].fd, response.c_str(), response.size(), 0);
+		_continue[_sockets[i].fd] = false;
+		_sockets[i].events = POLLIN;
+		return;
+	}
+
 	// Prepare response
 	Response response = router->route(_requests[_sockets[i].fd]);
 	
